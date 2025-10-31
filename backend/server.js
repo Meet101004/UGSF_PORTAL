@@ -5,6 +5,9 @@ import helmet from 'helmet'
 import morgan from 'morgan'
 import dotenv from 'dotenv'
 import connectMongoDB from './config/mongoDb.js'
+import mongoose from 'mongoose'
+import path from 'path'
+import fs from 'fs'
 
 // routes
 import authRoutes from './routes/authRoutes.js'
@@ -25,7 +28,15 @@ app.use(cors({
 
 app.use(helmet())
 app.use(morgan('dev'))
+
+// Parse JSON (ensure body available for task creation)
 app.use(express.json())
+app.use(express.urlencoded({ extended: true }))
+
+// Serve uploaded files
+const uploadsDir = path.join(process.cwd(), 'uploads')
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true })
+app.use('/uploads', express.static(uploadsDir))
 
 // mount routes
 app.use('/auth', authRoutes)    // /auth/register, /auth/login
@@ -33,6 +44,34 @@ app.use('/admin', adminRoutes)  // /admin/users, /admin/applications/stats
 app.use('/applications', applicationRoutes)
 app.use('/files', filesRoutes)  // <— serve GridFS files uploaded via upload.js
 app.use('/hod', hodRoutes)      // /hod/someEndpoint
+
+// Serve local docs (if you use uploadDoc for project PDFs)
+const docsDir = path.join(process.cwd(), 'uploads', 'docs')
+if (!fs.existsSync(docsDir)) fs.mkdirSync(docsDir, { recursive: true })
+app.use('/uploads/docs', express.static(docsDir))
+
+// Stream files from GridFS: GET /files/:id
+app.get('/files/:id', async (req, res) => {
+  try {
+    const id = new mongoose.Types.ObjectId(req.params.id)
+    const bucket = new mongoose.mongo.GridFSBucket(mongoose.connection.db, { bucketName: 'uploads' })
+
+    // Lookup file metadata to set headers
+    const files = await bucket.find({ _id: id }).toArray()
+    if (!files || files.length === 0) return res.status(404).send('File not found')
+
+    const file = files[0]
+    if (file.contentType) res.set('Content-Type', file.contentType)
+    // Inline display for PDFs/images; browser will download others
+    res.set('Content-Disposition', 'inline')
+
+    const stream = bucket.openDownloadStream(id)
+    stream.on('error', () => res.status(404).end())
+    stream.pipe(res)
+  } catch {
+    res.status(400).send('Invalid file id')
+  }
+})
 
 // health
 app.get('/health', (req, res) => res.json({ ok: true }))

@@ -134,10 +134,28 @@ export function FacultyAssignmentDetails() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
+  const API = import.meta.env.VITE_API_URL || ''
+  const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` }
+
+  const [tasks, setTasks] = useState([])
+  const [tLoading, setTLoading] = useState(true)
+  const [tError, setTError] = useState('')
+
+  const [newTask, setNewTask] = useState({ title: '', details: '', dueDate: '' })
+
+  async function loadTasks() {
+    setTError(''); setTLoading(true)
+    try {
+      const r = await fetch(`${API}/applications/faculty/assignments/${id}/tasks`, { headers })
+      const d = await r.json().catch(() => [])
+      if (!r.ok) throw new Error(d.error || 'Failed to load tasks')
+      setTasks(Array.isArray(d) ? d : [])
+    } catch (e) { setTError(e.message || 'Failed to load tasks') }
+    finally { setTLoading(false) }
+  }
+
   useEffect(() => {
     let mounted = true
-    const API = import.meta.env.VITE_API_URL || ''
-    const headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` }
     async function load() {
       setError(''); setLoading(true)
       try {
@@ -149,8 +167,44 @@ export function FacultyAssignmentDetails() {
       finally { if (mounted) setLoading(false) }
     }
     load()
+    loadTasks()
     return () => { mounted = false }
   }, [id])
+
+  async function addTask(e) {
+    e.preventDefault()
+    setTError('')
+    const title = (newTask.title || '').trim()
+    if (!title) return setTError('Title is required')
+
+    const body = {
+      title,
+      details: (newTask.details || '').trim(),
+      dueDate: newTask.dueDate ? new Date(newTask.dueDate).toISOString() : null
+    }
+
+    try {
+      const r = await fetch(`${API}/applications/faculty/assignments/${id}/tasks`, {
+        method: 'POST', headers, body: JSON.stringify(body)
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(d.error || `Failed (${r.status})`)
+      setNewTask(s => ({ ...s, title: '', details: '' })) // keep due date default
+      await loadTasks()
+    } catch (err) {
+      setTError(err.message || 'Failed to add task')
+    }
+  }
+
+  async function markDone(taskId, status) {
+    setTError('')
+    const r = await fetch(`${API}/applications/faculty/assignments/${id}/tasks/${taskId}`, {
+      method: 'PATCH', headers, body: JSON.stringify({ status })
+    })
+    const d = await r.json().catch(() => ({}))
+    if (!r.ok) return setTError(d.error || 'Failed to update task')
+    await loadTasks()
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -182,6 +236,98 @@ export function FacultyAssignmentDetails() {
             )}
           </div>
         )}
+
+        <div className="bg-white rounded-xl shadow p-6 mt-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-slate-800">Weekly Tasks</h2>
+          </div>
+
+          {/* Add Task form is ALWAYS visible so you can add multiple */}
+          <form onSubmit={addTask} className="mt-4 grid grid-cols-1 gap-3">
+            <div>
+              <label className="block text-sm mb-1">Title</label>
+              <input
+                className="w-full border rounded px-2 py-2"
+                value={newTask.title}
+                onChange={e => setNewTask(s => ({ ...s, title: e.target.value }))}
+                placeholder="e.g., Week 2: Build UI components"
+              />
+            </div>
+            <div>
+              <label className="block text-sm mb-1">Details</label>
+              <textarea
+                rows={3}
+                className="w-full border rounded px-2 py-2"
+                value={newTask.details}
+                onChange={e => setNewTask(s => ({ ...s, details: e.target.value }))}
+              />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm mb-1">Due Date</label>
+                <input
+                  type="datetime-local"
+                  className="w-full border rounded px-2 py-2"
+                  value={newTask.dueDate}
+                  onChange={e => setNewTask(s => ({ ...s, dueDate: e.target.value }))}
+                />
+              </div>
+              <div className="flex items-end">
+                <button className="bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded">
+                  Add Task
+                </button>
+              </div>
+            </div>
+          </form>
+
+          {/* List tasks below; you can add more at any time */}
+          <div className="mt-6">
+            {tLoading ? (
+              <div>Loading tasks…</div>
+            ) : tasks.length === 0 ? (
+              <div>No tasks yet.</div>
+            ) : (
+              tasks.map(t => (
+                <div key={t._id} className="border rounded-lg p-3 mb-3">
+                  <div className="flex items-center justify-between">
+                    <div className="font-medium">{t.title}</div>
+                    <span className={`px-2 py-1 rounded text-xs ${t.status === 'completed' ? 'bg-emerald-100 text-emerald-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                      {t.status}
+                    </span>
+                  </div>
+                  {t.details && <div className="text-sm text-slate-700 mt-1 whitespace-pre-wrap">{t.details}</div>}
+                  <div className="text-xs text-slate-500 mt-1">Due: {t.dueDate ? new Date(t.dueDate).toLocaleString() : '—'}</div>
+
+                  {(t.submissions?.length || 0) > 0 ? (
+                    <div className="mt-2">
+                      <div className="text-sm font-medium">Student submissions</div>
+                      <ul className="mt-1 space-y-1">
+                        {t.submissions.map(s => (
+                          <li key={s._id} className="text-sm text-slate-700">
+                            <span className="text-xs text-slate-500 mr-2">{new Date(s.submittedAt).toLocaleString()}:</span>
+                            {s.link && <a href={s.link} target="_blank" rel="noopener noreferrer" className="text-cyan-700 underline mr-2">Link</a>}
+                            {s.fileUrl && <a href={s.fileUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-700 underline mr-2">{s.filename || 'File'}</a>}
+                            {s.note && <span className="ml-1">{s.note}</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <div className="mt-2 text-sm text-slate-500">No submissions yet.</div>
+                  )}
+
+                  <div className="mt-2">
+                    {t.status === 'pending' ? (
+                      <button onClick={() => markDone(t._id, 'completed')} className="text-white bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 rounded">Mark Done</button>
+                    ) : (
+                      <button onClick={() => markDone(t._id, 'pending')} className="text-slate-700 bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded">Reopen</button>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       </main>
     </div>
   )
