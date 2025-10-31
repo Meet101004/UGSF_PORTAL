@@ -1,6 +1,9 @@
 import { apiFetch } from './client'
 import { getToken, clearAuth } from '../store/authStore'
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000'
+// Compat alias + auth header helper
+const API = BASE
+const auth = () => ({ Authorization: `Bearer ${getToken?.() || localStorage.getItem('token') || ''}` })
 
 async function authFetch(path, options = {}) {
   const headers = new Headers(options.headers || {})
@@ -29,38 +32,40 @@ export async function getAdminStats() {
 }
 
 export async function listAdminHods() {
-  const r = await fetch(`${API}/admin/hods`, { headers: auth() })
+  const r = await fetch(`${BASE}/admin/hods`, { headers: auth(), credentials: 'include' })
   const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Failed'); return d
 }
 
 export async function listAdminProjects(params = {}) {
   const qs = new URLSearchParams(params).toString()
-  const r = await fetch(`${API}/admin/projects${qs ? `?${qs}` : ''}`, { headers: auth() })
+  const r = await fetch(`${BASE}/admin/projects${qs ? `?${qs}` : ''}`, { headers: auth(), credentials: 'include' })
   const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Failed'); return d
 }
 
 export async function createAdminProject(formData) {
-  const r = await fetch(`${API}/admin/projects`, { method: 'POST', headers: auth(), body: formData })
+  const r = await fetch(`${BASE}/admin/projects`, { method: 'POST', headers: auth(), body: formData, credentials: 'include' })
   const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Failed'); return d
 }
 
 export async function assignAdminProject(projectId, hodId) {
-  const r = await fetch(`${API}/admin/projects/${projectId}/assign-hod`, {
+  const r = await fetch(`${BASE}/admin/projects/${projectId}/assign-hod`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...auth() },
-    body: JSON.stringify({ hodId })
+    body: JSON.stringify({ hodId }),
+    credentials: 'include'
   })
   const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Failed'); return d
 }
 
 export async function bulkProjectsExcel(file, hodId) {
   const fd = new FormData()
-  fd.append('excel', file) // must be 'excel' to match excelUpload.single('excel')
+  fd.append('excel', file)
   if (hodId) fd.append('hodId', hodId)
-  const r = await fetch(`${API}/admin/projects/bulk-excel`, {
+  const r = await fetch(`${BASE}/admin/projects/bulk-excel`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${getToken()}` }, // do not set Content-Type for FormData
-    body: fd
+    headers: auth(), // no Content-Type for FormData
+    body: fd,
+    credentials: 'include'
   })
   const d = await r.json().catch(() => ({}))
   if (!r.ok) {

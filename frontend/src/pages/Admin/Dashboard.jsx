@@ -184,11 +184,14 @@ export default function AdminDashboard() {
 
             <div>
               <label className="block text-sm text-slate-700 mb-1">Assign HOD (optional)</label>
-              <select className="w-full border rounded-lg px-3 py-2" value={projForm.hodId}
-                      onChange={e=>setProjForm(f=>({...f,hodId:e.target.value}))}>
-                <option value="">Select HOD</option>
-                {hods.filter(h=>h.department===projForm.department).map(h => (
-                  <option key={h._id} value={h._id}>{h.name} ({h.email})</option>
+              <select
+                className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500"
+                value={projForm.hodId}
+                onChange={e=>setProjForm(f=>({...f, hodId:e.target.value}))}
+              >
+                <option value="">Select HOD (optional)</option>
+                {hods.map(h => (
+                  <option key={h._id} value={h._id}>{h.name} {h.department ? `(${h.department})` : ''}</option>
                 ))}
               </select>
             </div>
@@ -248,15 +251,13 @@ export default function AdminDashboard() {
                         value={p.assignedHod?._id || ''}
                         onChange={async (e) => {
                           const hid = e.target.value
-                          try { await assignAdminProject(p._id, hid); setToast('HOD assigned') }
+                          try { await assignAdminProject(p._id, hid); setToast('HOD assigned (department updated)') }
                           catch (err) { setToast(err.message) }
                         }}
-                        className="border rounded px-2 py-1"
+                        className="border rounded px-2 py-1 bg-white"
                       >
                         <option value="">Unassigned</option>
-                        {hods.filter(h=>h.department===p.department).map(h=>(
-                          <option key={h._id} value={h._id}>{h.name}</option>
-                        ))}
+                        {hods.map(h => (<option key={h._id} value={h._id}>{h.name}</option>))}
                       </select>
                     </div>
                   </div>
