@@ -10,7 +10,7 @@ const storage = multer.memoryStorage();
 // Create multer instance
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  limits: { fileSize: 20 * 1024 * 1024 }, // 5MB
   fileFilter: (req, file, cb) => {
     const allowedTypes = /pdf|jpeg|jpg|png|gif|webp/;  // allow PDF too
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
@@ -23,7 +23,24 @@ const upload = multer({
 
 // Create GridFS helper middleware
 export const storeInGridFS = async (req, res, next) => {
-  if (!req.file) return next();
+  // normalize: pick first file from req.file | req.files[] | req.files[field]
+  const pickFirstFile = () => {
+    if (req.file) return req.file
+    if (Array.isArray(req.files) && req.files.length) return req.files[0]
+    if (req.files && !Array.isArray(req.files)) {
+      if (req.files.document?.[0]) return req.files.document[0]
+      if (req.files.file?.[0]) return req.files.file[0]
+      for (const k of Object.keys(req.files)) {
+        const arr = req.files[k]
+        if (arr && arr.length) return arr[0]
+      }
+    }
+    return null
+  }
+
+  const inbound = pickFirstFile()
+  if (!inbound) return next()
+  req.file = inbound
   
   try {
     // Generate a random filename
@@ -46,7 +63,6 @@ export const storeInGridFS = async (req, res, next) => {
       }
     });
     
-    // Store the ID when it's generated
     fileId = uploadStream.id;
     
     // Write the file to GridFS
@@ -86,7 +102,7 @@ const storageDocs = multer.diskStorage({
 })
 export const uploadDoc = multer({
   storage: storageDocs,
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB
+  limits: { fileSize: 20 * 1024 * 1024 } // 10MB
 })
 
 // Memory storage for Excel
@@ -94,5 +110,7 @@ export const uploadExcel = multer({ storage: multer.memoryStorage() });
 
 // Export a modified upload middleware
 export default {
-  single: (fieldName) => [upload.single(fieldName), storeInGridFS]
+  single: (fieldName) => [upload.single(fieldName), storeInGridFS],
+  fields: (arr) => [upload.fields(arr), storeInGridFS],
+  any: () => [upload.any(), storeInGridFS]
 };

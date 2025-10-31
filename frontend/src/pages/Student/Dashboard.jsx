@@ -10,13 +10,35 @@ export default function StudentDashboard() {
   const [loading, setLoading] = useState(true)
   const [app, setApp] = useState({ exists: false, status: 'none', message: '', lastUpdate: null })
 
+  // Normalize API response so status is always present
+  function normalizeApp(x) {
+    const src = x && typeof x === 'object' ? x : {}
+    return {
+      exists: !!src.exists,
+      status: src.status ?? 'none',
+      message: src.message ?? '',
+      lastUpdate: src.lastUpdate ?? null,
+      assignedProjectTitle: src.assignedProjectTitle ?? null,
+      assignedProjectDescription: src.assignedProjectDescription ?? null,
+      assignedProjectLink: src.assignedProjectLink ?? null,
+      assignedAt: src.assignedAt ?? null,
+      // keep extra fields used by Track Application
+      department: src.department ?? null,
+      hodAction: src.hodAction ?? null,
+      nextInterview: src.nextInterview ?? null,
+      documents: src.documents ?? undefined,
+    }
+  }
+
   useEffect(() => {
     let mounted = true
     ;(async () => {
       setLoading(true)
       try {
-        const d = await getMyApplication()
-        if (mounted) setApp(d)
+        const raw = await getMyApplication()
+        // handle both {data: {...}} and {...}
+        const data = raw?.data ?? raw
+        if (mounted) setApp(normalizeApp(data))
       } finally {
         if (mounted) setLoading(false)
       }
@@ -31,26 +53,78 @@ export default function StudentDashboard() {
 
   const statusStyles = {
     none: 'bg-slate-100 text-slate-700',
+    new: 'bg-slate-100 text-slate-700', // treat 'new' like 'none'
     submitted: 'bg-yellow-100 text-yellow-800',
     accepted: 'bg-emerald-100 text-emerald-800',
     rejected: 'bg-rose-100 text-rose-800'
   }
-  const statusLabel = app.status === 'submitted' ? 'pending' : app.status
 
-  // Show button but disable when accepted/rejected
-  const isAccepted = app.status === 'accepted'
-  const isRejected = app.status === 'rejected'
-  const canEdit = app.status === 'none' || app.status === 'submitted'
-  const buttonLabel = app.exists && canEdit ? 'Update Application' : 'Add Application'
+  // Always derive a safe status
+  const status = app?.status ?? 'none'
+  const statusLabel = status === 'submitted' ? 'pending' : status
 
-  const briefMessage = (() => {
-    if (loading) return 'Loading...'
-    if (app.status === 'none') return 'No application submitted yet.'
-    const msg = app.message || 'No updates yet.'
-    return msg.length > 120 ? `${msg.slice(0, 120)}…` : msg
-  })()
+  console.log('status:', status, 'app:', app)
+
+  // Enable editing when status is 'none' or 'new' (and still allow when 'submitted')
+  const isAccepted = status === 'accepted'
+  const isRejected = status === 'rejected'
+  const canEdit = ['none', 'new', 'submitted'].includes(status)
+  const buttonLabel = (status === 'none' || status === 'new') ? 'Add Application' : 'Update Application'
 
   const hasProject = !!app.assignedProjectTitle
+
+  // Highlight based on status and nextInterview (same as Track Application)
+  function renderHighlight() {
+    const iv = app?.nextInterview
+
+    if (status === 'accepted') {
+      return (
+        <div className="mt-3 border rounded-lg p-3 bg-emerald-50 border-emerald-200 text-emerald-900">
+          <div className="font-semibold">Your application is accepted</div>
+          <div className="text-sm mt-1">Watch for project assignment or further instructions.</div>
+        </div>
+      )
+    }
+
+    if (status === 'rejected') {
+      return (
+        <div className="mt-3 border rounded-lg p-3 bg-rose-50 border-rose-200 text-rose-900">
+          <div className="font-semibold">Your application was rejected</div>
+          {!!app?.hodAction?.note && <div className="text-sm mt-1">Reason: {app.hodAction.note}</div>}
+        </div>
+      )
+    }
+
+    if (iv?.scheduledAt) {
+      const when = new Date(iv.scheduledAt).toLocaleString()
+      return (
+        <div className="mt-3 border rounded-lg p-3 bg-indigo-50 border-indigo-200 text-indigo-900">
+          <div className="font-semibold">You have an interview scheduled</div>
+          <div className="text-sm mt-1">When: {when}</div>
+          <div className="text-sm mt-1 capitalize">Mode: {iv.mode}</div>
+          {iv.mode === 'online' && iv.meetingUrl && (
+            <div className="text-sm mt-1">
+              Link: <a className="underline" href={iv.meetingUrl} target="_blank" rel="noreferrer">Join meeting</a>
+            </div>
+          )}
+          {iv.mode === 'offline' && iv.location && (
+            <div className="text-sm mt-1">Location: {iv.location}</div>
+          )}
+        </div>
+      )
+    }
+
+    if (status === 'submitted') {
+      return (
+        <div className="mt-3 border rounded-lg p-3 bg-amber-50 border-amber-200 text-amber-900">
+          <div className="font-semibold">Pending review</div>
+          {!!app?.hodAction?.note && <div className="text-sm mt-1">HOD note: {app.hodAction.note}</div>}
+        </div>
+      )
+    }
+
+    return null
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -72,8 +146,8 @@ export default function StudentDashboard() {
             <div>
               <div className="flex items-center gap-3">
                 <h2 className="text-lg font-medium">Application Status</h2>
-                <span className={`px-2 py-1 rounded text-xs ${statusStyles[app.status]}`}>
-                  {app.status === 'none' ? 'no application' : statusLabel}
+                <span className={`px-2 py-1 rounded text-xs ${statusStyles[status]}`}>
+                  {(['none','new'].includes(status)) ? 'no application' : statusLabel}
                 </span>
                 {hasProject && (
                   <span className="px-2 py-1 rounded text-xs bg-indigo-50 text-indigo-700 border border-indigo-200">
@@ -81,12 +155,9 @@ export default function StudentDashboard() {
                   </span>
                 )}
               </div>
-              <p className="text-slate-600 mt-2">{briefMessage}</p>
-              {hasProject && (
-                <p className="text-sm text-slate-700 mt-1">
-                  You have one project assigned.
-                </p>
-              )}
+
+              {/* removed the brief one-line message; only highlight based on app.message */}
+              {renderHighlight()}
             </div>
             <div className="flex items-center gap-2">
               <button

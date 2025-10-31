@@ -1,8 +1,8 @@
 import Assignment from '../models/Assignment.js'
 import Project from '../models/Project.js'
-import StudentApplication from '../models/StudentApplication.js'
-import Interview from '../models/Interview.js'
 import User from '../models/User.js'
+import Interview from '../models/Interview.js'
+import StudentApplication from '../models/StudentApplication.js'
 
 // GET /hod/assignments/options -> list students/faculties/projects not already assigned (active)
 export async function getAssignmentOptions(req, res) {
@@ -402,4 +402,55 @@ export async function getApplicationForHod(req, res) {
   app.project = project
 
   res.json(app)
+}
+
+// PUT /hod/interviews/:id  body: { scheduledAt, mode, meetingUrl?, location?, notes? }
+export async function updateInterview(req, res) {
+  const me = await User.findById(req.user.sub).lean()
+  if (!me || me.role !== 'hod') return res.status(403).json({ error: 'forbidden' })
+
+  const { id } = req.params
+  const { scheduledAt, mode, meetingUrl, location, notes } = req.body || {}
+
+  if (!scheduledAt || !mode) {
+    return res.status(400).json({ error: 'scheduledAt and mode are required' })
+  }
+  const when = new Date(scheduledAt)
+  if (Number.isNaN(when.getTime()) || when.getTime() <= Date.now()) {
+    return res.status(400).json({ error: 'scheduled time must be in the future' })
+  }
+  if (!['online', 'offline'].includes(mode)) return res.status(400).json({ error: 'invalid mode' })
+  if (mode === 'online' && !(meetingUrl && /^https?:\/\//i.test(meetingUrl))) {
+    return res.status(400).json({ error: 'valid meetingUrl is required for online interviews' })
+  }
+  if (mode === 'offline' && !String(location || '').trim()) {
+    return res.status(400).json({ error: 'location is required for offline interviews' })
+  }
+
+  const iv = await Interview.findOne({ _id: id, hod: me._id })
+  if (!iv) return res.status(404).json({ error: 'interview not found' })
+  if (iv.result && iv.result !== 'pending') {
+    return res.status(400).json({ error: 'cannot update a completed interview' })
+  }
+
+  iv.scheduledAt = when
+  iv.mode = mode
+  iv.meetingUrl = mode === 'online' ? meetingUrl : undefined
+  iv.location = mode === 'offline' ? location : undefined
+  iv.notes = notes || iv.notes
+  await iv.save()
+
+  // Optional: append message on the student application timeline
+  const app = await StudentApplication.findOne({ student: iv.student, department: me.department })
+  if (app) {
+    app.messages = app.messages || []
+    app.messages.push({
+      by: 'hod',
+      text: `Interview updated (${mode}) to ${when.toLocaleString()}`,
+      at: new Date()
+    })
+    await app.save()
+  }
+
+  res.json({ id: iv._id, scheduledAt: iv.scheduledAt, mode: iv.mode, meetingUrl: iv.meetingUrl, location: iv.location, notes: iv.notes })
 }

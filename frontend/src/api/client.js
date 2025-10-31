@@ -17,8 +17,17 @@ export async function apiFetch(path, { method='GET', headers={}, body } = {}) {
     console.error('apiFetch network error:', url, e)
     throw new Error(`Network error. Cannot reach ${url}. Check VITE_API_URL, server, and CORS.`)
   }
+
+  // Success with no body (e.g., 204) -> return {}
+  if (res.ok && (res.status === 204 || res.headers.get('content-length') === '0')) {
+    return {}
+  }
+
   let data = null
-  try { data = await res.json() } catch {}
+  const text = await res.text().catch(() => '')
+  if (text) {
+    try { data = JSON.parse(text) } catch { /* ignore parse errors */ }
+  }
   if (!res.ok) throw new Error(data?.error || `${res.status} ${res.statusText}`)
-  return data
+  return data ?? {}
 }

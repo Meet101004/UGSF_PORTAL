@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react'
 import { clearAuth, getUser } from '../../store/authStore'
 import { useNavigate } from 'react-router-dom'
 import { getHodApplications, } from '../../api/hod'
-import { scheduleInterview, listHodInterviews, setInterviewResult } from '../../api/hod'
+import { scheduleInterview, listHodInterviews, setInterviewResult, updateInterview } from '../../api/hod'
 
 export default function HODDashboard() {
   const navigate = useNavigate()
@@ -66,23 +66,42 @@ export default function HODDashboard() {
     if (form.mode === 'online' && !/^https?:\/\//i.test(form.meetingUrl || '')) return setFormErr('Enter a valid meeting link (https://...)')
     if (form.mode === 'offline' && !form.location.trim()) return setFormErr('Enter a venue for offline interview')
 
+    const payload = {
+      applicationId: selected._id,
+      scheduledAt: when.toISOString(),
+      mode: form.mode,
+      meetingUrl: form.mode === 'online' ? form.meetingUrl : undefined,
+      location: form.mode === 'offline' ? form.location : undefined,
+      notes: form.notes || undefined
+    }
+
     try {
       setSaving(true)
-      await scheduleInterview({
-        applicationId: selected._id,
-        scheduledAt: when.toISOString(),
-        mode: form.mode,
-        meetingUrl: form.mode === 'online' ? form.meetingUrl : undefined,
-        location: form.mode === 'offline' ? form.location : undefined,
-        notes: form.notes || undefined
-      })
+      // If we prefetched an interview, and it is still pending, update it instead of creating a new one
+      if (editingPrefill && editingPrefill.result === 'pending') {
+        await updateInterview(editingPrefill._id, payload)
+      } else {
+        await scheduleInterview(payload)
+      }
+
       setModalOpen(false)
       setToast('Interview scheduled')
-      // refresh current list if needed
+
+      // refresh lists
       setLoading(true)
       getHodApplications(filter === 'all' ? {} : { status: filter })
         .then(data => setApps(data))
         .finally(() => setLoading(false))
+
+      // refresh interviews to reflect update (and dedupe)
+      const rows = await listHodInterviews()
+      setAllInterviews(rows || [])
+      setPendingInterviews(dedupePending(rows || []))
+      setCompletedInterviews((rows || [])
+        .filter(r => r.result === 'pass' || r.result === 'fail')
+        .sort((a,b) => new Date(b.scoredAt || b.scheduledAt) - new Date(a.scoredAt || a.scheduledAt))
+      )
+
       setTimeout(() => setToast(''), 2000)
     } catch (e) {
       setFormErr(e.message)
@@ -132,13 +151,28 @@ export default function HODDashboard() {
         if (!mounted) return
         const arr = rows || []
         setAllInterviews(arr)
-        setPendingInterviews(arr.filter(r => r.result === 'pending'))
+        setPendingInterviews(dedupePending(arr))
         setCompletedInterviews(arr.filter(r => r.result === 'pass' || r.result === 'fail')
           .sort((a,b) => new Date(b.scoredAt || b.scheduledAt) - new Date(a.scoredAt || a.scheduledAt)))
       })
       .catch(()=>{})
     return () => { mounted = false }
   }, [toast]) // refresh after scheduling/result save
+
+  // Keep only the latest pending interview per student
+  function dedupePending(rows) {
+    const byStudent = {}
+    for (const r of rows) {
+      if (r.result !== 'pending') continue
+      const sid = r.student?._id || r.student
+      if (!sid) continue
+      const prev = byStudent[sid]
+      if (!prev || new Date(r.scheduledAt) > new Date(prev.scheduledAt)) {
+        byStudent[sid] = r
+      }
+    }
+    return Object.values(byStudent)
+  }
 
   // Latest interview per student (by scheduledAt)
   const latestByStudent = useMemo(() => {
@@ -248,7 +282,7 @@ export default function HODDashboard() {
        {a.status === 'accepted' && !hasCompletedIv && (
          <button
            className="text-slate-700 hover:text-slate-900 underline"
-           onClick={() => openSchedule(a)}
+           onClick={() => navigate(`/hod/interviews/schedule/${a._id}`)}
          >
            {hasPendingIv ? 'Update Interview' : 'Schedule Interview'}
          </button>

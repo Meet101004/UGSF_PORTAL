@@ -19,12 +19,18 @@ import HODDashboard from '../pages/HOD/Dashboard'
 import HODApplicationView from '../pages/HOD/ApplicationView'
 import FacultyDashboard, { FacultyAssignments, FacultyAssignmentDetails } from '../pages/Faculty/Dashboard'
 import HODAssignments from '../pages/HOD/Assignments' // uncomment this
+// ...existing code...
+import HODScheduleInterview from '../pages/HOD/HODScheduleInterview'
+// ...existing code...
+      
+// ...existing code...
 
 export default function AppRoutes() {
   return (
     <Routes>
       {/* Landing -> role-based dashboard or login */}
       <Route path="/" element={<Navigate to="/login" replace />} />
+      <Route path="/hod/interviews/schedule/:id" element={<HODScheduleInterview />} />
 
       {/* Auth */}
       <Route path="/login" element={<Login />} />

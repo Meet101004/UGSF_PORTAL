@@ -5,7 +5,7 @@ import {
   createApplication, getMyApplication,
   listMyAssignments, getMyAssignmentById,
   listMyAssignmentTasks, createMyAssignmentTask, updateMyAssignmentTask,
-  studentListTasks, submitTaskWork
+  studentListTasks, submitTaskWork,uploadApplicationDocument
 } from '../controllers/applicationController.js'
 
 const router = Router()
@@ -27,6 +27,19 @@ router.post('/student/assignments/:id/tasks/:taskId/submissions',
   authMiddleware,
   upload.single('file'),
   submitTaskWork
+)
+router.post('/student/uploadApplicationDocument',
+  authMiddleware,
+  upload.single('document'),
+  uploadApplicationDocument
+)
+
+// Support frontend: PATCH /applications/:id/documents/:type
+router.patch('/:id/documents/:type',
+  authMiddleware,
+  // accept either 'document', 'file', or any field; still stored in GridFS
+  ...upload.any(),
+  uploadApplicationDocument
 )
 
 export default router

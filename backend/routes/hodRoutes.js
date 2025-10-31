@@ -9,7 +9,8 @@ import {
   setInterviewResult,
   getAssignmentOptions,
   createAssignment,
-  listAssignments
+  listAssignments,
+  updateInterview
 } from '../controllers/hodController.js'
 
 const router = Router()
@@ -22,6 +23,7 @@ router.patch('/applications/:id/status', authenticate, restrictTo('hod'), setApp
 // Interviews
 router.get('/interviews', authenticate, restrictTo('hod'), listInterviews)
 router.post('/interviews', authenticate, restrictTo('hod'), scheduleInterview)
+router.put('/interviews/:id', authenticate, restrictTo('hod'), updateInterview)
 router.patch('/interviews/:id/result', authenticate, restrictTo('hod'), setInterviewResult)
 
 // Assignments

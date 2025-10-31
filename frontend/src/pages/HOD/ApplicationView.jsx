@@ -48,7 +48,11 @@ export default function HODApplicationView() {
     rejected: 'bg-rose-100 text-rose-800'
   }[app?.status || 'none']
 
+  // Disable actions if application is finalized
+  const locked = app?.status === 'accepted' || app?.status === 'rejected'
+
   async function updateStatus(status) {
+    if (locked) return
     try {
       setError(''); setSaved(''); setActionLoading(status)
       await setHodApplicationStatus(id, status, note || undefined)
@@ -159,6 +163,18 @@ export default function HODApplicationView() {
           <div>Not found</div>
         ) : (
           <>
+            {/* Show only when accepted */}
+            {app?.status === 'accepted' && (
+              <div className="flex justify-end mb-3">
+                <button
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg"
+                  onClick={() => navigate(`/hod/interviews/schedule/${id}`)}
+                >
+                  Schedule Interview
+                </button>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Field label="Name" value={app.name} />
               <Field label="Email" value={app.email} />
@@ -202,14 +218,27 @@ export default function HODApplicationView() {
             <div className="mt-4 space-y-2">
               <label className="block text-sm text-slate-700">Note (optional)</label>
               <textarea className="w-full border rounded-lg px-3 py-2" rows={2} value={note} onChange={e => setNote(e.target.value)} />
+              {locked && <div className="text-xs text-slate-500">Actions are disabled after approval/rejection.</div>}
               <div className="flex gap-2">
-                <button onClick={() => updateStatus('accepted')} disabled={!!actionLoading} className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-300 text-white px-4 py-2 rounded-lg">
+                <button
+                  onClick={() => updateStatus('accepted')}
+                  disabled={!!actionLoading || locked}
+                  className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-300 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg"
+                >
                   {actionLoading === 'accepted' ? 'Saving...' : 'Approve'}
                 </button>
-                <button onClick={() => updateStatus('rejected')} disabled={!!actionLoading} className="bg-rose-600 hover:bg-rose-500 disabled:bg-rose-300 text-white px-4 py-2 rounded-lg">
+                <button
+                  onClick={() => updateStatus('rejected')}
+                  disabled={!!actionLoading || locked}
+                  className="bg-rose-600 hover:bg-rose-500 disabled:bg-rose-300 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg"
+                >
                   {actionLoading === 'rejected' ? 'Saving...' : 'Reject'}
                 </button>
-                <button onClick={() => updateStatus('submitted')} disabled={!!actionLoading} className="bg-slate-600 hover:bg-slate-500 disabled:bg-slate-300 text-white px-4 py-2 rounded-lg">
+                <button
+                  onClick={() => updateStatus('submitted')}
+                  disabled={!!actionLoading || locked}
+                  className="bg-slate-600 hover:bg-slate-500 disabled:bg-slate-300 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg"
+                >
                   {actionLoading === 'submitted' ? 'Saving...' : 'Mark Pending'}
                 </button>
               </div>
@@ -217,7 +246,7 @@ export default function HODApplicationView() {
           </>
         )}
 
-        {/* Assignment summary */}
+        {/* Assignment summary
         {app?.assignedFaculty ? (
           <div className="rounded-lg border p-3 bg-emerald-50 border-emerald-200 text-emerald-900">
             <div className="font-semibold">Assigned Faculty & Project</div>
@@ -239,7 +268,7 @@ export default function HODApplicationView() {
               Assign Faculty & Project
             </button>
           </div>
-        )}
+        )} */}
 
         {/* NEW: Interview section */}
         {latestInterview && (
@@ -260,11 +289,11 @@ export default function HODApplicationView() {
               <div className="mt-3 space-y-2">
                 <div className="flex items-center gap-4">
                   <label className="flex items-center gap-2">
-                    <input type="radio" name="ir" value="pass" checked={irResult==='pass'} onChange={e=>setIrResult(e.target.value)} />
+                    <input type="radio" name="ir" value="pass" checked={irResult==='pass'} onChange={e=>setIrResult(e.target.value)} disabled={locked} />
                     <span>Pass</span>
                   </label>
                   <label className="flex items-center gap-2">
-                    <input type="radio" name="ir" value="fail" checked={irResult==='fail'} onChange={e=>setIrResult(e.target.value)} />
+                    <input type="radio" name="ir" value="fail" checked={irResult==='fail'} onChange={e=>setIrResult(e.target.value)} disabled={locked} />
                     <span>Fail</span>
                   </label>
                 </div>
@@ -274,15 +303,16 @@ export default function HODApplicationView() {
                   placeholder="Remark (optional)"
                   value={irNote}
                   onChange={e=>setIrNote(e.target.value)}
+                  disabled={locked}
                 />
                 {irError && <div className="text-sm text-red-600">{irError}</div>}
                 <button
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg"
+                  className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-300 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg"
                   onClick={async () => {
+                    if (locked) return
                     try {
                       setIrError('')
                       await setInterviewResult(latestInterview._id, irResult, irNote || undefined)
-                      // reload interview list and application to reflect status/messages
                       const [rows, updated] = await Promise.all([
                         listHodInterviews({ student: app.student }),
                         getHodApplication(id)
@@ -295,6 +325,7 @@ export default function HODApplicationView() {
                       setIrError(e.message)
                     }
                   }}
+                  disabled={locked}
                 >
                   Save Result
                 </button>
@@ -361,7 +392,7 @@ export default function HODApplicationView() {
 
               <div className="flex justify-end gap-2">
                 <button type="button" className="px-4 py-2 rounded-lg border" onClick={() => setAssignOpen(false)}>Cancel</button>
-                <button disabled={assignSaving} className="px-4 py-2 rounded-lg bg-emerald-600 text-white disabled:opacity-60">
+                <button disabled={assignSaving || locked} className="px-4 py-2 rounded-lg bg-emerald-600 text-white disabled:opacity-60 disabled:cursor-not-allowed">
                   {assignSaving ? 'Saving...' : 'Assign'}
                 </button>
               </div>

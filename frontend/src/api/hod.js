@@ -22,7 +22,10 @@ export function setHodApplicationStatus(id, status, note) {
 
 // Interviews
 export function scheduleInterview(payload) {
-  return apiFetch(`/hod/interviews`, { method: 'POST', body: payload })
+  return apiFetch('/hod/interviews', { method: 'POST', body: payload })
+}
+export function updateInterview(id, payload) {
+  return apiFetch(`/hod/interviews/${id}`, { method: 'PUT', body: payload })
 }
 export function listHodInterviews(params = {}) {
   const q = new URLSearchParams(params).toString()
