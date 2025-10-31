@@ -170,7 +170,7 @@ export default function ApplicationStatus() {
                 {canUpdate ? 'Update Application' : (status === 'none' || status === 'new') ? 'Start Application' : 'Application Locked'}
               </button>
               <button
-                onClick={() => navigate('/student')}
+                onClick={() => navigate(-2)}
                 className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-4 py-2 rounded-lg shadow"
               >
                 Go to Dashboard

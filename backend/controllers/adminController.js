@@ -61,8 +61,8 @@ export async function listHods(_req, res) {
 // Create single project (supports Drive/URL or uploaded GridFS file)
 export async function createProjectByAdmin(req, res) {
   try {
-    const { title, description, whatToDo, techStack, department, hodId, docLink } = req.body || {}
-    if (!title || !department) return res.status(400).json({ error: 'title and department are required' })
+    const { title, description, whatToDo, techStack, hodId, docLink, department: reqDept } = req.body || {}
+    if (!title) return res.status(400).json({ error: 'title is required' })
 
     let finalDocLink = ''
     let docFileId = null, docFileName = '', docFileMime = ''
@@ -75,12 +75,22 @@ export async function createProjectByAdmin(req, res) {
       finalDocLink = String(docLink).trim()
     }
 
+    // Decide department: prefer HOD's department when hodId is provided
     let assignedHod = null
+    let department = (reqDept || '').toString().trim().toUpperCase()
     if (hodId) {
       const hod = await User.findOne({ _id: hodId, role: 'hod' }).lean()
       if (!hod) return res.status(400).json({ error: 'invalid HOD' })
-      if (hod.department !== department) return res.status(400).json({ error: 'HOD and project department mismatch' })
       assignedHod = hod._id
+      department = (hod.department || '').toString().trim().toUpperCase()
+    } else if (department) {
+      // Optional validation when provided without HOD
+      if (!ALLOWED_DEPTS.includes(department)) {
+        return res.status(400).json({ error: `department must be one of: ${ALLOWED_DEPTS.join(', ')}` })
+      }
+    } else {
+      // No HOD and no department
+      return res.status(400).json({ error: 'select HOD or provide department' })
     }
 
     const createdBy = req.user?.sub || req.user?.id || new mongoose.Types.ObjectId()
@@ -132,9 +142,9 @@ export async function assignProjectToHod(req, res) {
 
     const proj = await Project.findById(id)
     if (!proj) return res.status(404).json({ error: 'project not found' })
-    if (proj.department !== hod.department) return res.status(400).json({ error: 'department mismatch' })
-
+    // Always align project department with selected HOD
     proj.assignedHod = hod._id
+    proj.department = hod.department
     await proj.save()
     res.json({ id: proj._id, assignedHod: hod._id })
   } catch (e) {
@@ -174,7 +184,7 @@ export async function bulkUploadProjectsExcel(req, res) {
     if (!req.file) return res.status(400).json({ error: 'Select a .xlsx file in the input.' })
     const mimeOk = [
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/octet-stream' // some browsers send this
+      'application/octet-stream'
     ].includes(req.file.mimetype)
     if (!mimeOk && !req.file.originalname.toLowerCase().endsWith('.xlsx')) {
       return res.status(400).json({ error: 'Invalid file. Please upload a .xlsx Excel file.' })
@@ -201,7 +211,8 @@ export async function bulkUploadProjectsExcel(req, res) {
     if (!rows.length) return res.status(400).json({ error: 'Excel is empty. Add headers and at least one row.' })
 
     const required = ['Title','Department']
-    const missing = required.filter(h => !(h in rows[0]))
+    // Allow missing Department when default HOD is provided
+    const missing = required.filter(h => h === 'Title' && !(h in rows[0]))
     if (missing.length) {
       return res.status(400).json({
         error: `Missing required column(s): ${missing.join(', ')}.`,
@@ -214,7 +225,7 @@ export async function bulkUploadProjectsExcel(req, res) {
     let i = 2 // header is row 1
     for (const r of rows) {
       const title = String(r.Title || '').trim()
-      const department = String(r.Department || '').trim().toUpperCase()
+      let department = String(r.Department || '').trim().toUpperCase()
       const description = String(r.Description || '').trim()
       const whatToDo = String(r.WhatToDo || '').trim()
       const techStack = String(r.TechStack || '').trim()
@@ -222,12 +233,13 @@ export async function bulkUploadProjectsExcel(req, res) {
 
       const issues = []
       if (!title) issues.push('Title is required')
-      if (!department) issues.push('Department is required')
-      else if (!ALLOWED_DEPTS.includes(department)) issues.push(`Department must be one of: ${ALLOWED_DEPTS.join(', ')}`)
-      if (docUrl && !isHttpUrl(docUrl)) issues.push('DocUrl must start with http:// or https://')
-      if (defaultHod && defaultHod.department !== department) {
-        issues.push(`Default HOD is ${defaultHod.department}, but row dept is ${department}`)
+      if (defaultHod) {
+        department = (defaultHod.department || '').toString().trim().toUpperCase()
+      } else {
+        if (!department) issues.push('Department is required')
+        else if (!ALLOWED_DEPTS.includes(department)) issues.push(`Department must be one of: ${ALLOWED_DEPTS.join(', ')}`)
       }
+      if (docUrl && !isHttpUrl(docUrl)) issues.push('DocUrl must start with http:// or https://')
 
       if (issues.length) {
         errors.push({ row: i, issues })

@@ -112,14 +112,6 @@ export default function Login() {
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  function roleHome(r) {
-    const role = String(r || "").trim().toLowerCase();
-    if (role === "admin") return "/admin"; // add admin route
-    if (role === "hod") return "/hod/dashboard";
-    if (role === "faculty") return "/faculty";
-    return "/student";
-  }
-
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
@@ -141,7 +133,7 @@ export default function Login() {
         window.location.assign("/change-password");
         return;
       }
-      window.location.assign(roleHome(data.role), { replace: true });
+      window.location.assign(getDashboardPath(data.role));
     } catch (err) {
       setError(err.message);
     } finally {
