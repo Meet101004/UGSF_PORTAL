@@ -8,7 +8,8 @@ import {
   createProjectByAdmin,
   listProjectsAdmin,
   assignProjectToHod,
-  bulkUploadProjectsExcel, downloadProjectsTemplate
+  bulkUploadProjectsExcel, downloadProjectsTemplate,
+  getAdminStats // <-- add import
 } from '../controllers/adminController.js'
 
 const router = Router()
@@ -45,5 +46,8 @@ router.get(
   requireRole('admin'),
   downloadProjectsTemplate
 )
+
+// NEW: stats endpoint
+router.get('/stats', authMiddleware, requireRole('admin'), getAdminStats)
 
 export default router

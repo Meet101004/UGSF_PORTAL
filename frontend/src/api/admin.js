@@ -1,8 +1,18 @@
 import { apiFetch } from './client'
-import { getToken } from '../store/authStore'
-const API = import.meta.env.VITE_API_URL || ''
+import { getToken, clearAuth } from '../store/authStore'
+const BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000'
 
-const auth = () => ({ Authorization: `Bearer ${getToken()}` })
+async function authFetch(path, options = {}) {
+  const headers = new Headers(options.headers || {})
+  const token = (typeof getToken === 'function' ? getToken() : localStorage.getItem('token')) || ''
+  if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`)
+  const res = await fetch(`${BASE}${path}`, { credentials: 'include', ...options, headers })
+  if (res.status === 401) {
+    try { typeof clearAuth === 'function' && clearAuth() } catch {}
+    throw new Error('Unauthorized. Sign in as admin.')
+  }
+  return res
+}
 
 export function adminCreateUser({ name, email, role, password, department }) {
   return apiFetch('/admin/users', { method: 'POST', body: { name, email, role, password, department } })
@@ -11,6 +21,11 @@ export function adminCreateUser({ name, email, role, password, department }) {
 // Stats endpoint (will fallback to dummy if backend not ready)
 export function getApplicationStats() {
   return apiFetch('/admin/applications/stats', { method: 'GET' })
+}
+
+export async function getAdminStats() {
+  const res = await authFetch('/admin/stats')
+  return res.json()
 }
 
 export async function listAdminHods() {

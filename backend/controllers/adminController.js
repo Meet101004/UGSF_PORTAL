@@ -259,3 +259,22 @@ export async function bulkUploadProjectsExcel(req, res) {
     res.status(500).json({ error: 'Server error while importing Excel.' })
   }
 }
+
+// NEW: consolidated admin stats
+export async function getAdminStats(_req, res) {
+  const [students, submitted, accepted, rejected] = await Promise.all([
+    User.countDocuments({ role: 'student' }),
+    StudentApplication.countDocuments({ status: 'submitted' }),
+    StudentApplication.countDocuments({ status: 'accepted' }),
+    StudentApplication.countDocuments({ status: 'rejected' })
+  ])
+  res.json({
+    students,
+    applications: {
+      total: submitted + accepted + rejected,
+      submitted,
+      accepted,
+      rejected
+    }
+  })
+}

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { clearAuth, getUser } from '../../store/authStore'
 import { useNavigate } from 'react-router-dom'
 import AdminRegisterUser from '../../components/AdminRegisterUser'
-import { listAdminHods, listAdminProjects, createAdminProject, assignAdminProject, bulkProjectsExcel } from '../../api/admin'
+import { getAdminStats, listAdminHods, listAdminProjects, createAdminProject, assignAdminProject, bulkProjectsExcel } from '../../api/admin'
 
 // Inline icons (UI only)
 const ChevronRight = (p) => (
@@ -59,14 +59,54 @@ function AccordionSection({ icon, title, subtitle, open, onToggle, children }) {
   )
 }
 
+function MetricCard({ label, value, icon }) {
+  return (
+    <div className="bg-white rounded-lg p-4 shadow-md flex items-center gap-3">
+      <div className="p-3 rounded-full bg-emerald-50 text-emerald-700">
+        {icon}
+      </div>
+      <div className="text-sm">
+        <div className="font-medium text-slate-700">{label}</div>
+        <div className="text-lg font-semibold text-slate-900">{value}</div>
+      </div>
+    </div>
+  )
+}
+
 export default function AdminDashboard() {
   const navigate = useNavigate()
   const user = getUser()
 
+  // role toggle for the Register section
   const [selectedRole, setSelectedRole] = useState('hod')
-  const [showStats, setShowStats] = useState(false)
-  const [statsTab, setStatsTab] = useState(null)
-  const stats = { total: 12, accepted: 5, rejected: 2 }
+
+  // Which panel is open
+  const [openPanel, setOpenPanel] = useState('stats')
+  const openOnly = (id) => setOpenPanel(p => (p === id ? null : id))
+
+  // Stats from backend
+  const [stats, setStats] = useState({
+    students: 0,
+    applications: { total: 0, submitted: 0, accepted: 0, rejected: 0 }
+  })
+  const [statsLoading, setStatsLoading] = useState(true)
+  const [statsError, setStatsError] = useState('')
+
+  useEffect(() => {
+    let on = true
+    ;(async () => {
+      try {
+        setStatsLoading(true)
+        const data = await getAdminStats()
+        if (on) setStats(data)
+      } catch (e) {
+        if (on) setStatsError(e.message || 'Failed to load stats')
+      } finally {
+        if (on) setStatsLoading(false)
+      }
+    })()
+    return () => { on = false }
+  }, [])
 
   // NEW: Projects state
   const [hods, setHods] = useState([])
@@ -85,6 +125,27 @@ export default function AdminDashboard() {
   const [openApps, setOpenApps] = useState(false)
   const [openRegister, setOpenRegister] = useState(false)
   const [openProjects, setOpenProjects] = useState(true)
+
+  // Projects: UI-only filters and pagination
+  const [pQuery, setPQuery] = useState('')
+  const [pDept, setPDept] = useState('all')
+  const [pPage, setPPage] = useState(1)
+  const [pPageSize, setPPageSize] = useState(5)
+
+  const depts = Array.from(new Set(projects.map(p => p.department).filter(Boolean)))
+  const filteredProjects = projects.filter(p => {
+    const okDept = pDept === 'all' || p.department === pDept
+    const q = pQuery.trim().toLowerCase()
+    const okQ = !q || [p.title, p.description, p.techStack, p.whatToDo, p.department]
+      .filter(Boolean).some(v => String(v).toLowerCase().includes(q))
+    return okDept && okQ
+  })
+  const pTotalPages = Math.max(1, Math.ceil(filteredProjects.length / pPageSize))
+  const safePage = Math.min(Math.max(1, pPage), pTotalPages)
+  const pStart = (safePage - 1) * pPageSize
+  const pageItems = filteredProjects.slice(pStart, pStart + pPageSize)
+
+  useEffect(() => { setPPage(1) }, [pQuery, pDept, pPageSize])
 
   useEffect(() => {
     let mounted = true
@@ -155,208 +216,245 @@ export default function AdminDashboard() {
       </header>
 
       <main className="px-4 sm:px-6 py-6 space-y-6">
-         {toast && <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-3 py-2 rounded">{toast}</div>}
+        {toast && <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-3 py-2 rounded">{toast}</div>}
 
-        {/* Applications Overview (collapsible) */}
+        {/* 1) Stats — first, visible by default. Other sections close it when opened */}
         <AccordionSection
           icon={<GraphIcon className="h-5 w-5" />}
-          title="Applications Overview"
-          subtitle="Quick glance at totals and status"
-          open={openApps}
-          onToggle={() => setOpenApps(v => !v)}
+          title="Overview"
+          subtitle="Students and application status"
+          open={openPanel === 'stats'}
+          onToggle={() => openOnly('stats')}
         >
-          <div className="flex items-center justify-between">
-            <div className="inline-flex rounded-md overflow-hidden border bg-white">
-              <button
-                className={`px-4 py-2 ${statsTab === 'total' && showStats ? 'bg-emerald-600 text-white' : 'text-slate-700'}`}
-                onClick={() => { setStatsTab('total'); setShowStats(true) }}
-              >
-                Total Applications
-              </button>
-              <button
-                className={`px-4 py-2 ${statsTab === 'status' && showStats ? 'bg-emerald-600 text-white' : 'text-slate-700'}`}
-                onClick={() => { setStatsTab('status'); setShowStats(true) }}
-              >
-                Accepted / Rejected
-              </button>
-            </div>
-          </div>
-          {showStats && (
-            <div className="rounded-xl border p-4 bg-slate-50 mt-4">
-              <div className="flex items-center justify-between mb-4">
-                <div className="text-sm text-slate-600">
-                  {statsTab === 'total' ? 'Total Applications' : 'Accepted / Rejected'}
-                </div>
-                <button onClick={() => setShowStats(false)} className="text-slate-500 hover:text-slate-700">Close</button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <StatCard title="Total" value={stats.total} color="indigo" />
-                <StatCard title="Accepted" value={stats.accepted} color="emerald" />
-                <StatCard title="Rejected" value={stats.rejected} color="rose" />
-              </div>
-              <p className="text-xs text-slate-400 mt-2">Demo stats (replace with API later)</p>
+          {statsLoading ? (
+            <div className="text-sm text-slate-600">Loading…</div>
+          ) : statsError ? (
+            <div className="text-sm text-rose-700 bg-rose-50 border border-rose-200 px-3 py-2 rounded">{statsError}</div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <MetricCard icon={<UsersIcon className="h-5 w-5" />} label="Total Students" value={stats.students} />
+              <MetricCard icon={<FolderIcon className="h-5 w-5" />} label="Total Applications" value={stats.applications.total} />
+              <MetricCard icon={<GraphIcon className="h-5 w-5" />} label="Accepted" value={stats.applications.accepted} />
+              <MetricCard icon={<GraphIcon className="h-5 w-5" />} label="Rejected" value={stats.applications.rejected} />
             </div>
           )}
         </AccordionSection>
 
-        {/* Register HOD/Faculty (collapsible) */}
+        {/* 2) Register HOD / Faculty */}
         <AccordionSection
           icon={<UsersIcon className="h-5 w-5" />}
           title="Register HOD / Faculty"
           subtitle="Create accounts for department heads and staff"
-          open={openRegister}
-          onToggle={() => setOpenRegister(v => !v)}
+          open={openPanel === 'register'}
+          onToggle={() => openOnly('register')}
         >
-          <div className="flex items-center justify-between">
-            <div className="inline-flex rounded-md overflow-hidden border bg-white">
-              <button
-                className={`px-4 py-2 ${selectedRole === 'hod' ? 'bg-emerald-600 text-white' : 'text-slate-700'}`}
-                onClick={() => setSelectedRole('hod')}
-              >
-                Register HOD
-              </button>
-              <button
-                className={`px-4 py-2 ${selectedRole === 'faculty' ? 'bg-emerald-600 text-white' : 'text-slate-700'}`}
-                onClick={() => setSelectedRole('faculty')}
-              >
-                Register Faculty
-              </button>
-            </div>
+          <div className="inline-flex rounded-md overflow-hidden border bg-white">
+            <button
+              className={`px-4 py-2 ${selectedRole === 'hod' ? 'bg-emerald-600 text-white' : 'text-slate-700'}`}
+              onClick={() => setSelectedRole('hod')}
+            >
+              Register HOD
+            </button>
+            <button
+              className={`px-4 py-2 ${selectedRole === 'faculty' ? 'bg-emerald-600 text-white' : 'text-slate-700'}`}
+              onClick={() => setSelectedRole('faculty')}
+            >
+              Register Faculty
+            </button>
           </div>
           <div className="mt-4">
             <AdminRegisterUser forcedRole={selectedRole} />
           </div>
         </AccordionSection>
 
-        {/* Projects (collapsible) */}
+        {/* 3) Projects */}
         <AccordionSection
           icon={<FolderIcon className="h-5 w-5" />}
           title="Projects (Assign to HOD)"
           subtitle="Create projects, upload docs, and assign to HOD"
-          open={openProjects}
-          onToggle={() => setOpenProjects(v => !v)}
+          open={openPanel === 'projects'}
+          onToggle={() => openOnly('projects')}
         >
- 
-           <form onSubmit={submitProject} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-             <div className="md:col-span-2">
-               <label className="block text-sm text-slate-700 mb-1">Project Name</label>
-               <input className="w-full border rounded-lg px-3 py-2" value={projForm.title}
-                      onChange={e=>setProjForm(f=>({...f,title:e.target.value}))} placeholder="e.g., UGSF Placement Portal" />
-             </div>
+          {/* Quick filters */}
+          <div className="mb-4 flex flex-col md:flex-row gap-2 md:items-center md:justify-between">
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <input
+                  value={pQuery}
+                  onChange={e => setPQuery(e.target.value)}
+                  placeholder="Search by title, tech, description…"
+                  className="pl-3 pr-3 py-2 border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 w-64"
+                />
+              </div>
+              <select
+                value={pDept}
+                onChange={e => setPDept(e.target.value)}
+                className="px-3 py-2 border rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              >
+                <option value="all">All Departments</option>
+                {depts.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
 
-             <div>
-               <label className="block text-sm text-slate-700 mb-1">Department</label>
-               <select className="w-full border rounded-lg px-3 py-2" value={projForm.department}
-                       onChange={e=>setProjForm(f=>({...f,department:e.target.value, hodId: ''}))}>
-                 {['IT','CE','CSE','ME','CIVIL','EE','EC','AIML'].map(d => <option key={d} value={d}>{d}</option>)}
-               </select>
-             </div>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-slate-500">Per page</span>
+              <select
+                value={pPageSize}
+                onChange={e => setPPageSize(Number(e.target.value))}
+                className="px-2 py-1 border rounded-md bg-white"
+              >
+                <option value={5}>5</option>
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+              </select>
+            </div>
+          </div>
 
-             <div>
-               <label className="block text-sm text-slate-700 mb-1">Assign HOD (optional)</label>
-               <select className="w-full border rounded-lg px-3 py-2" value={projForm.hodId}
-                       onChange={e=>setProjForm(f=>({...f,hodId:e.target.value}))}>
-                 <option value="">Select HOD</option>
-                 {hods.filter(h=>h.department===projForm.department).map(h => (
-                   <option key={h._id} value={h._id}>{h.name} ({h.email})</option>
-                 ))}
-               </select>
-             </div>
+          {/* Create Project form (UI only) */}
+          <form onSubmit={submitProject} className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-white/70 border rounded-2xl p-4 mb-4">
+            <div className="md:col-span-2">
+              <label className="block text-sm text-slate-700 mb-1">Project Name</label>
+              <input className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                     value={projForm.title} onChange={e=>setProjForm(f=>({...f,title:e.target.value}))}
+                     placeholder="e.g., UGSF Placement Portal" />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-700 mb-1">Department</label>
+              <select className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      value={projForm.department} onChange={e=>setProjForm(f=>({...f,department:e.target.value}))}>
+                <option>IT</option><option>CE</option><option>EC</option><option>ME</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm text-slate-700 mb-1">Assign HOD</label>
+              <select className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      value={projForm.hodId} onChange={e=>setProjForm(f=>({...f,hodId:e.target.value}))}>
+                <option value="">Select HOD</option>
+                {hods.filter(h=>h.department===projForm.department).map(h=>(
+                  <option key={h._id} value={h._id}>{h.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm text-slate-700 mb-1">Description</label>
+              <textarea className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        rows={3} value={projForm.description}
+                        onChange={e=>setProjForm(f=>({...f,description:e.target.value}))}
+                        placeholder="Brief overview of the project" />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-700 mb-1">What to do</label>
+              <input className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                     value={projForm.whatToDo} onChange={e=>setProjForm(f=>({...f,whatToDo:e.target.value}))}
+                     placeholder="Key tasks" />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-700 mb-1">Tech Stack</label>
+              <input className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                     value={projForm.techStack} onChange={e=>setProjForm(f=>({...f,techStack:e.target.value}))}
+                     placeholder="e.g., React, Node, MongoDB" />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-700 mb-1">Document Link</label>
+              <input className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                     value={projForm.docLink} onChange={e=>setProjForm(f=>({...f,docLink:e.target.value}))}
+                     placeholder="https://…" />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-700 mb-1">Upload Document</label>
+              <input type="file" onChange={e=>setDocFile(e.target.files?.[0]||null)}
+                     className="w-full border rounded-lg px-3 py-2 bg-white" />
+            </div>
+            <div className="md:col-span-2 flex justify-end">
+              <button disabled={creating}
+                      className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-4 py-2 rounded-lg">
+                {creating ? 'Creating...' : 'Create Project'}
+              </button>
+            </div>
+          </form>
 
-             <div className="md:col-span-2">
-               <label className="block text-sm text-slate-700 mb-1">Description</label>
-               <textarea rows={2} className="w-full border rounded-lg px-3 py-2"
-                         value={projForm.description} onChange={e=>setProjForm(f=>({...f,description:e.target.value}))}/>
-             </div>
+          {/* Projects list with pagination */}
+          <div className="rounded-2xl border bg-white/80 backdrop-blur-xl p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-slate-600">
+                {filteredProjects.length} result{filteredProjects.length === 1 ? '' : 's'}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  className="px-2 py-1 rounded-md border text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  disabled={safePage <= 1}
+                  onClick={() => setPPage(p => Math.max(1, p - 1))}
+                >
+                  Prev
+                </button>
+                <span className="text-sm text-slate-500">
+                  Page {safePage} of {pTotalPages}
+                </span>
+                <button
+                  className="px-2 py-1 rounded-md border text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  disabled={safePage >= pTotalPages}
+                  onClick={() => setPPage(p => Math.min(pTotalPages, p + 1))}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
 
-             <div className="md:col-span-2">
-               <label className="block text-sm text-slate-700 mb-1">What to do</label>
-               <textarea rows={2} className="w-full border rounded-lg px-3 py-2"
-                         value={projForm.whatToDo} onChange={e=>setProjForm(f=>({...f,whatToDo:e.target.value}))}/>
-             </div>
+            <div className="mt-3 divide-y">
+              {pageItems.length === 0 ? (
+                <div className="py-6 text-sm text-slate-600">No projects match your filters.</div>
+              ) : (
+                pageItems.map(p => (
+                  <div key={p._id} className="py-3 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <div className="min-w-0">
+                        <div className="font-medium text-slate-900 truncate">{p.title} <span className="text-xs text-slate-500">[{p.department}]</span></div>
+                        <div className="text-sm text-slate-700 truncate">{p.description || '—'}</div>
+                        {p.docLink && <a href={p.docLink} target="_blank" rel="noreferrer" className="text-emerald-700 underline text-sm">View Doc</a>}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-slate-600">HOD</span>
+                        <select
+                          value={p.assignedHod?._id || ''}
+                          onChange={async (e) => {
+                            const hid = e.target.value
+                            try { await assignAdminProject(p._id, hid); setToast('HOD assigned') }
+                            catch (err) { setToast(err.message) }
+                          }}
+                          className="border rounded px-2 py-1 bg-white"
+                        >
+                          <option value="">Unassigned</option>
+                          {hods.filter(h=>h.department===p.department).map(h=>(
+                            <option key={h._id} value={h._id}>{h.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
 
-             <div className="md:col-span-2">
-               <label className="block text-sm text-slate-700 mb-1">Tech Stack</label>
-               <input className="w-full border rounded-lg px-3 py-2" value={projForm.techStack}
-                      onChange={e=>setProjForm(f=>({...f,techStack:e.target.value}))} placeholder="React, Node, MongoDB" />
-             </div>
-
-             <div>
-               <label className="block text-sm text-slate-700 mb-1">Doc Link (Drive/URL)</label>
-               <input className="w-full border rounded-lg px-3 py-2" value={projForm.docLink}
-                      onChange={e=>setProjForm(f=>({...f,docLink:e.target.value}))} placeholder="https://drive.google.com/..." />
-               <div className="text-xs text-slate-500 mt-1">Make sure “Anyone with the link can view”.</div>
-             </div>
-
-             <div>
-               <label className="block text-sm text-slate-700 mb-1">Or Upload Doc (PDF/Image)</label>
-               <input type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp" onChange={e=>setDocFile(e.target.files?.[0]||null)} />
-               <div className="text-xs text-slate-500 mt-1">Stored in MongoDB (GridFS). Max 5MB.</div>
-             </div>
-
-             <div className="md:col-span-2 flex justify-end">
-               <button disabled={creating} className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-4 py-2 rounded-lg">
-                 {creating ? 'Creating...' : 'Create Project'}
-               </button>
-             </div>
-           </form>
- 
-           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-             <div className="rounded-xl border overflow-hidden">
-               <div className="px-4 py-3 bg-slate-50 font-medium">Existing Projects</div>
-               <div className="max-h-80 overflow-auto divide-y">
-                 {projects.length === 0 ? (
-                   <div className="p-4 text-slate-500 text-sm">No projects</div>
-                 ) : projects.map(p => (
-                   <div key={p._id} className="p-4 space-y-1">
-                     <div className="font-medium">{p.title} <span className="text-xs text-slate-500">[{p.department}]</span></div>
-                     <div className="text-sm text-slate-700">{p.description || '—'}</div>
-                     {p.docLink && <a href={p.docLink} target="_blank" rel="noreferrer" className="text-indigo-700 underline text-sm">View Doc</a>}
-                     <div className="flex items-center gap-2 text-sm">
-                       <span>HOD:</span>
-                       <select
-                         value={p.assignedHod?._id || ''}
-                         onChange={async (e) => {
-                           const hid = e.target.value
-                           try { await assignAdminProject(p._id, hid); setToast('HOD assigned') }
-                           catch (err) { setToast(err.message) }
-                         }}
-                         className="border rounded px-2 py-1"
-                       >
-                         <option value="">Unassigned</option>
-                         {hods.filter(h=>h.department===p.department).map(h=>(
-                           <option key={h._id} value={h._id}>{h.name}</option>
-                         ))}
-                       </select>
-                     </div>
-                   </div>
-                 ))}
-               </div>
-             </div>
- 
-             <form onSubmit={submitExcel} className="rounded-xl border p-4 space-y-3">
-               <div className="font-medium">Bulk Import via Excel</div>
-               <div className="text-xs text-slate-500">
-                 Columns: Title, Description, WhatToDo, TechStack, DocUrl, Department. Optional HOD will be assigned to all.
-               </div>
-               <input type="file" accept=".xlsx" onChange={e=>setExcelFile(e.target.files?.[0]||null)} />
-               <div>
-                 <label className="block text-sm text-slate-700 mb-1">Assign HOD (optional)</label>
-                 <select className="w-full border rounded px-2 py-1" value={excelHodId} onChange={e=>setExcelHodId(e.target.value)}>
-                   <option value="">No default HOD</option>
-                   {hods.map(h=> <option value={h._id} key={h._id}>{h.name} - {h.department}</option>)}
-                 </select>
-               </div>
-               <button disabled={excelUploading} className="bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white px-4 py-2 rounded-lg">
-                 {excelUploading ? 'Uploading...' : 'Upload'}
-               </button>
-             </form>
-           </div>
- 
-           <p className="text-xs text-slate-500">
-             Tip: Use a Google Drive link with “Anyone with the link can view”, or upload a PDF/image which is stored in MongoDB and served at /files/:id.
-           </p>
-         </AccordionSection>
+          {/* Bulk Excel (kept, styled) */}
+          <form onSubmit={submitExcel} className="mt-4 rounded-2xl border bg-white/80 backdrop-blur-xl p-4 space-y-3">
+            <div className="font-medium">Bulk Import via Excel</div>
+            <div className="text-xs text-slate-500">
+              Columns: Title, Description, WhatToDo, TechStack, DocUrl, Department. Optional HOD will be assigned to all.
+            </div>
+            <input type="file" accept=".xlsx" onChange={e=>setExcelFile(e.target.files?.[0]||null)} className="bg-white border rounded px-3 py-2" />
+            <div>
+              <label className="block text-sm text-slate-700 mb-1">Assign HOD (optional)</label>
+              <select className="w-full border rounded px-2 py-1 bg-white" value={excelHodId} onChange={e=>setExcelHodId(e.target.value)}>
+                <option value="">No default HOD</option>
+                {hods.map(h=> <option value={h._id} key={h._id}>{h.name} - {h.department}</option>)}
+              </select>
+            </div>
+            <button disabled={excelUploading} className="bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white px-4 py-2 rounded-lg">
+              {excelUploading ? 'Uploading...' : 'Upload'}
+            </button>
+          </form>
+        </AccordionSection>
        </main>
      </div>
   )
