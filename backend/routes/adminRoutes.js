@@ -14,6 +14,9 @@ import {
 
 const router = Router()
 
+// Stats (applications: total/submitted/accepted/rejected, students)
+router.get('/stats', authMiddleware, requireRole('admin'), getAdminStats)
+
 router.post('/users', authMiddleware, requireRole('admin'), createUserByAdmin)
 // HODs
 router.get('/hods', authMiddleware, requireRole('admin'), listHods)
@@ -46,8 +49,5 @@ router.get(
   requireRole('admin'),
   downloadProjectsTemplate
 )
-
-// NEW: stats endpoint
-router.get('/stats', authMiddleware, requireRole('admin'), getAdminStats)
 
 export default router
