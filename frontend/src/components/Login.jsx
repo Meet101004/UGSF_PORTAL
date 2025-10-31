@@ -166,12 +166,13 @@ export default function Login() {
             {/* Header with small image next to title */}
             <div className="flex items-center gap-3 mb-2">
               <img
-                src="/charusat-banner.png"
+                src="https://charusat.online/images/CHARUSAT_Online_Logo.png"
                 alt="Brand"
-                className="h-10 w-10 rounded-lg object-cover shadow-md"
+                className="h-25 w-170 rounded-lg object-fit shadow-md"
               />
-              <h1 className="text-3xl md:text-4xl font-bold text-gray-900">Sign in</h1>
+              
             </div>
+            <h1 className="text-3xl md:text-4xl font-bold text-gray-900">Sign in</h1>
             <p className="text-gray-600 mb-6">Welcome back to your dashboard</p>
 
             <form onSubmit={handleSubmit} className="space-y-5">
@@ -237,7 +238,7 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white py-4 px-4 rounded-xl font-bold text-lg hover:from-emerald-700 hover:to-teal-700 focus:outline-none focus:ring-4 focus:ring-emerald-300 transition-all disabled:opacity-60"
+                className="w-full bg-gradient-to-r from-blue-600 to-teal-600 text-white py-4 px-4 rounded-xl font-bold text-lg hover:from-emerald-700 hover:to-teal-700 focus:outline-none focus:ring-4 focus:ring-emerald-300 transition-all disabled:opacity-60"
               >
                 {loading ? "Signing in..." : "Sign In to Dashboard"}
               </button>
